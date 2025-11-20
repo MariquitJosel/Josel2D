@@ -1,0 +1,83 @@
+from flask import Flask, render_template, request, redirect, url_for, session, flash
+from functools import wraps
+import json, os
+
+app = Flask(__name__)
+app.secret_key = "truckhub_secret_2025"
+
+# === Load users from JSON ===
+USER_FILE = "users.json"
+
+def load_users():
+    if not os.path.exists(USER_FILE):
+        with open(USER_FILE, "w") as f:
+            json.dump({"admin": "password123"}, f)
+    with open(USER_FILE, "r") as f:
+        return json.load(f)
+
+def save_users(users):
+    with open(USER_FILE, "w") as f:
+        json.dump(users, f, indent=4)
+
+# === LOGIN REQUIRED DECORATOR ===
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# === HOME PAGE (requires login) ===
+@app.route("/")
+@login_required
+def home():
+    return render_template("index.html")
+
+# === LOGIN PAGE ===
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    users = load_users()
+    if request.method == "POST":
+        username = request.form["username"].strip()
+        password = request.form["password"].strip()
+
+        if username in users and users[username] == password:
+            session["logged_in"] = True
+            session["username"] = username
+            flash(f"Welcome back, {username}!", "success")
+            return redirect(url_for("home"))
+        else:
+            flash("Invalid username or password.", "danger")
+
+    return render_template("login.html")
+
+# === REGISTER PAGE ===
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    users = load_users()
+    if request.method == "POST":
+        username = request.form["username"].strip()
+        password = request.form["password"].strip()
+
+        if username in users:
+            flash("Username already exists. Please choose another.", "danger")
+        elif len(password) < 4:
+            flash("Password must be at least 4 characters.", "danger")
+        else:
+            users[username] = password
+            save_users(users)
+            flash("Account created successfully! You can now log in.", "success")
+            return redirect(url_for("login"))
+    return render_template("register.html")
+
+# === LOGOUT ===
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("You have been logged out.", "info")
+    return redirect(url_for("login"))
+
+# === RUN APP ===
+if __name__ == "__main__":
+    app.run(debug=True)
